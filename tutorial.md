@@ -45,6 +45,9 @@ This document contains a series of several sections, each of which explains a pa
     -   [2.2 Docker Images](#docker-images)
     -   [2.3 Our First Image](#our-image)
     -   [2.4 Dockerfile](#dockerfiles)
+    -   [2.5 Push image to Docker Hub](#pushimage)
+    -   [2.6 Docker compose](#dockercompose)
+-	 [3.0 Enter competition](#entercompetition)
 -   [4.0 Wrap Up](#wrap-up)
 -   [References](#references)
 
@@ -267,77 +270,280 @@ In other words, the `onbuild` version of the image includes helpers that automat
 
 A [Dockerfile](https://docs.docker.com/engine/reference/builder/) is a simple text-file that contains a list of commands that the docker client calls while creating an image. It is simple way to automate the image creation process. The best part is that the [commands](https://docs.docker.com/engine/reference/builder/#from) you write in a Dockerfile are *almost* identical to their equivalent Linux commands. This means you don't really have to learn new syntax to create your own dockerfiles.
 
-The application directory does contain a Dockerfile but since we're doing this for the first time, we'll create one from scratch. To start, create a new blank file in our favorite text-editor and save it in the **same** folder as the flask app by the name of `Dockerfile`.
+**The goal of this exercise is to create a Docker image which will run a Flask app.**
 
-You start with specifying our base image. Use the `FROM` keyword to do that -
+Start by creating an empty folder where we'll create the following files:
+
 ```
-FROM python:3-onbuild
+- Dockerfile
+- app.py
+- requirements.txt
+- templates/index.html
 ```
-The next step usually is to write the commands of copying the files and installing the dependencies. Luckily for us, the `onbuild` version of the image takes care of that. The next thing, you need to the tell is the port number which needs to be exposed. Since our flask app is running on `5000` that's what we'll indicate.
+
+*The application directory does contain a Dockerfile but since we're doing this for the first time, we'll create one from scratch. To start, create a new blank file in our favorite text-editor and save it in the same folder as the flask app by the name of `Dockerfile`.*
+
+Create the **app.py** with the following content:
+
+```
+from flask import Flask, render_template
+import random
+
+app = Flask(__name__)
+
+# list of cat images
+images = [
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr05/15/9/anigif_enhanced-buzz-26388-1381844103-11.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr01/15/9/anigif_enhanced-buzz-31540-1381844535-8.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr05/15/9/anigif_enhanced-buzz-26390-1381844163-18.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr06/15/10/anigif_enhanced-buzz-1376-1381846217-0.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr03/15/9/anigif_enhanced-buzz-3391-1381844336-26.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr06/15/10/anigif_enhanced-buzz-29111-1381845968-0.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr03/15/9/anigif_enhanced-buzz-3409-1381844582-13.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr02/15/9/anigif_enhanced-buzz-19667-1381844937-10.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr05/15/9/anigif_enhanced-buzz-26358-1381845043-13.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr06/15/9/anigif_enhanced-buzz-18774-1381844645-6.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr06/15/9/anigif_enhanced-buzz-25158-1381844793-0.gif",
+    "http://ak-hdl.buzzfed.com/static/2013-10/enhanced/webdr03/15/10/anigif_enhanced-buzz-11980-1381846269-1.gif"
+]
+
+@app.route('/')
+def index():
+    url = random.choice(images)
+    return render_template('index.html', url=url)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0")
+```
+
+In order to install Python modules required for our app we need to add to **requirements.txt** file the following line:
+
+```
+Flask==0.10.1
+```
+
+Create directory template and edit there **index.html** file to have the same content as below:
+
+```
+<html>
+  <head>
+    <style type="text/css">
+      body {
+        background: black;
+        color: white;
+      }
+      div.container {
+        max-width: 500px;
+        margin: 100px auto;
+        border: 20px solid white;
+        padding: 10px;
+        text-align: center;
+      }
+      h4 {
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h4>Cat Gif of the day</h4>
+      <img src="{{url}}" />
+      <p><small>Courtesy: <a href="http://www.buzzfeed.com/copyranter/the-best-cat-gif-post-in-the-history-of-cat-gifs">Buzzfeed</a></small></p>
+    </div>
+  </body>
+</html>
+```
+
+Having all the pieces created it is now time to create the **Dockerfile**.
+
+You start by specifying our base image. Use the `FROM` keyword to do that
+
+```
+FROM alpine:latest
+```
+
+The next step usually is to write the commands of copying the files and installing the dependencies. Create a directory for the app using [RUN](https://docs.docker.com/engine/reference/builder/#run) command:
+
+```
+RUN mkdir -p /usr/src/app/templates
+```
+
+The command above will create both directories: ```/usr/src/app``` and ```/usr/src/app/templates```.
+
+Copy the files you have created earlier our image by using [COPY](https://docs.docker.com/engine/reference/builder/#copy)  command.
+
+```
+COPY app.py /usr/src/app/
+COPY requirements.txt /usr/src/app/
+COPY templates/index.html /usr/src/app/templates
+```
+
+Install all Python requirements for our app to run. This will be accomplished by adding the line:
+
+```
+RUN pip install --no-cache-dir -r /usr/src/app/requirements.txt
+```
+
+The next thing, you need to the tell is the port number which needs to be exposed. Since our flask app is running on `5000` that's what we'll indicate.
 ```
 EXPOSE 5000
 ```
 The last step is simply to write the command for running the application which is simply - `python ./app.py`. you use the [CMD](https://docs.docker.com/engine/reference/builder/#cmd) command to do that -
+
 ```
 CMD ["python", "./app.py"]
 ```
 
 The primary purpose of `CMD` is to tell the container which command it should run when it is started. With that, our `Dockerfile` is now ready. This is how it looks like -
+
 ```
 # our base image
-FROM python:3-onbuild
+FROM alpine:latest
+
+# Install python and pip
+RUN apk add --update py-pip
+
+# Create app directory
+RUN mkdir -p /usr/src/app/templates
+
+# copy files required for the app to run
+COPY app.py /usr/src/app/
+COPY requirements.txt /usr/src/app/
+COPY templates/index.html /usr/src/app/templates
+
+# install Python modules
+RUN pip install --no-cache-dir -r /usr/src/app/requirements.txt
 
 # tell the port number the container should expose
 EXPOSE 5000
 
 # run the application
-CMD ["python", "./app.py"]
+CMD ["python", "/usr/src/app/app.py"]
 ```
 
-[comment]: # (Check this section works)
 
 Now that you finally have our `Dockerfile`, you can now build our image. The `docker build` command does the heavy-lifting of creating a docker image from a `Dockerfile`.
 
-Let's run the following -
-```
-$ docker build -t manomarks/catnip .
-Sending build context to Docker daemon 8.704 kB
-Step 1 : FROM python:3-onbuild
-# Executing 3 build triggers...
-Step 1 : COPY requirements.txt /usr/src/app/
- ---> Using cache
-Step 1 : RUN pip install --no-cache-dir -r requirements.txt
- ---> Using cache
-Step 1 : COPY . /usr/src/app
- ---> 1d61f639ef9e
-Removing intermediate container 4de6ddf5528c
-Step 2 : EXPOSE 5000
- ---> Running in 12cfcf6d67ee
- ---> f423c2f179d1
-Removing intermediate container 12cfcf6d67ee
-Step 3 : CMD python ./app.py
- ---> Running in f01401a5ace9
- ---> 13e87ed1fbc2
-Removing intermediate container f01401a5ace9
-Successfully built 13e87ed1fbc2
-```
-While running the command yourself, make sure to replace my username with yours. This username should be the same on you created when you registered on [Docker hub](https://hub.docker.com). If you haven't done that yet, please go ahead and create an account. The `docker build` command is quite simple - it takes an optional tag name with `-t` and a location of the directory containing the `Dockerfile`.
+Let's run the following:
 
+```
+$ docker build -t YOUR_USERNAME/myfirstapp .
+Sending build context to Docker daemon 7.168 kB
+Step 1 : FROM alpine:latest
+ ---> 90239124c352
+Step 2 : RUN apk add --update py-pip
+ ---> Running in eccbd4f10adc
+fetch http://dl-4.alpinelinux.org/alpine/v3.3/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-4.alpinelinux.org/alpine/v3.3/community/x86_64/APKINDEX.tar.gz
+(1/12) Installing libbz2 (1.0.6-r4)
+(2/12) Installing expat (2.1.0-r2)
+(3/12) Installing libffi (3.2.1-r2)
+(4/12) Installing gdbm (1.11-r1)
+(5/12) Installing ncurses-terminfo-base (6.0-r6)
+(6/12) Installing ncurses-terminfo (6.0-r6)
+(7/12) Installing ncurses-libs (6.0-r6)
+(8/12) Installing readline (6.3.008-r4)
+(9/12) Installing sqlite-libs (3.9.2-r0)
+(10/12) Installing python (2.7.11-r3)
+(11/12) Installing py-setuptools (18.8-r0)
+(12/12) Installing py-pip (7.1.2-r0)
+Executing busybox-1.24.1-r7.trigger
+OK: 59 MiB in 23 packages
+ ---> cfb2d28dcca6
+Removing intermediate container eccbd4f10adc
+Step 3 : COPY app.py /usr/src/app/
+ ---> 1209708f9a6d
+Removing intermediate container 26574093eaa5
+Step 4 : EXPOSE 5000
+ ---> Running in 69397414df70
+ ---> d4839bccb1cb
+Removing intermediate container 69397414df70
+Step 5 : CMD python ./app.py
+ ---> Running in 20168af7b1dd
+ ---> beedea106164
+Removing intermediate container 20168af7b1dd
+Successfully built beedea106164
+```
+While running the command yourself, make sure to replace YOUR_USERNAME  with your username. This username should be the same on you created when you registered on [Docker hub](https://hub.docker.com). If you haven't done that yet, please go ahead and create an account. The `docker build` command is quite simple - it takes an optional tag name with `-t` and a location of the directory containing the `Dockerfile`.
 
-If you don't have the `python-3:onbuild` image, the client will first pull the image and then create your image. Therefore, your output on running the command will look different from mine. Look carefully and you'll notice that the on-build triggers were executed correctly. If everything went well, your image should be ready! Run `docker images` and see if your image shows.
+If you don't have the `alpine:latest` image, the client will first pull the image and then create your image. Therefore, your output on running the command will look different from mine. Look carefully and you'll notice that the on-build triggers were executed correctly. If everything went well, your image should be ready! Run `docker images` and see if your image shows.
 
 The last step in this section is to run the image and see if it actually works.
+
 ```
-$ docker run -p 8888:5000 manomarks/catnip
+$ docker run -p 8888:5000 YOUR_USERNAME/myfirstapp
  * Running on http://0.0.0.0:5000/ (Press CTRL+C to quit)
 ```
+
 Head over to the URL above and your app should be live.
 
 <img src="https://raw.githubusercontent.com/manomarks/docker-curriculum/master/images/catgif.png" title="static">
 
 Congratulations! You have successfully created your first docker image.
 
-[comment]: # (this is where the app specific instructions should be)
+<a id="pushimage"></a>
+### 2.4 Push image to [Docker hub](https://hub.docker.com)
+
+Now that you have created your first Docker images is time to push it to [Docker hub](https://hub.docker.com). Assuming you have already created an account by now you need to login first using ```docker login```*:
+
+```
+$ docker login --username=YOUR_USERNAME --email=YOUR_EMAIL_ADDRESS
+Password:
+WARNING: login credentials saved in C:\Users\your_username\.docker\config.json
+Login Succeeded
+```
+
+Pushing the image is achived by running the following command*:
+
+```
+$ docker push YOUR_USERNAME/myfirstapp
+The push refers to a repository [docker.io/YOUR_USERNAME/myfirstapp]
+82ee1a5ef6e9: Pushed 
+ecc18069267f: Pushed 
+e0e4898a45e7: Pushed 
+9698a0f385a6: Pushed 
+acb71626a146: Pushed 
+3f1ec2e56b6b: Pushed 
+18efc99a87df: Pushed
+```
+
+\*Replace *YOUR_USERNAME* and *YOUR\_EMAIL\_ADDRESS* with your [Docker hub](https://hub.docker.com) username and your email address used during registration.
+
+<a id="dockercompose"></a>
+### 2.5 Docker compose
+
+You know now how to build your own Docker image so let's take it to the next level and 
+
+<a id="entercompetition"></a>
+## 3 Docker birthday competition
+
+### 3.1 Build your voting app
+change config.json file
+change default programming language
+change 1 and 2
+ 
+### 3.2 Test your images
+
+### 3.3 Enter competition
+
+In order to submit your work in the competition you need to run an API call as described below:
+
+```
+curl -H "Content-Type: application/json" \
+	 -X POST -d '{
+    	"location": "Budapest, Hungary",
+    	"name": "Mano Marks",
+    	"repo": [
+      		"bogus_bday_image:latest"
+    	],
+    	"twitter": "@ManoMarks",
+    	"vote": "java"
+	}' \
+	http://docker-bday-manager.do.lab.seqvence.com/competition
+```
+
+### 3.4 Check your submission status
+
 
 <a id="wrap-up"></a>
 ## 4.0 Wrap Up
